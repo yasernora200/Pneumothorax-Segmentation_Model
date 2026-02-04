@@ -1,0 +1,749 @@
+import { useState, useRef, useEffect } from "react";
+import Header from "../components/Header";
+import Form from "../components/Form";
+import Footer from "../components/Footer";
+import UploadTab from "../components/UploadTab";
+import Report from "../components/Report";
+
+
+import {
+  Upload,
+  Image,
+  Eye,
+  FileText,
+  User,
+  Brain,
+  AlertCircle,
+  CheckCircle2,
+  Target,
+  TrendingUp,
+  MapPin,
+  Layers,
+  Clock,
+  Trash2,
+  ChevronRight,
+} from "lucide-react";
+
+export default function Home() {
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [results, setResults] = useState(null);
+  const [activeTab, setActiveTab] = useState("upload");
+  const [visualizationMode, setVisualizationMode] = useState("overlay");
+  const [progress, setProgress] = useState(0);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userData, setUserData] = useState(null);
+  
+  // History State
+  const [history, setHistory] = useState(() => {
+    const saved = localStorage.getItem("pneumoai_history");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [authForm, setAuthForm] = useState({
+    email: "",
+    password: "",
+    name: "",
+    hospitalId: "",
+    specialty: "",
+  });
+
+  const [patientData, setPatientData] = useState({
+    id: "",
+    name: "",
+    age: "",
+    gender: "",
+  });
+
+  const fileInputRef = useRef(null);
+  const reportRef = useRef(null);
+
+  // Persistence Effect
+  useEffect(() => {
+    localStorage.setItem("pneumoai_history", JSON.stringify(history));
+  }, [history]);
+
+  useEffect(() => {
+    if (isAnalyzing) {
+      const interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 95) return prev;
+          return prev + Math.random() * 10;
+        });
+      }, 200);
+      return () => clearInterval(interval);
+    } else {
+      setProgress(0);
+    }
+  }, [isAnalyzing]);
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+      setResults(null);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith("image/")) {
+      setSelectedImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+      setResults(null);
+    }
+  };
+
+  const analyzeImage = async () => {
+    if (!selectedImage) return;
+
+    setIsAnalyzing(true);
+    setProgress(0);
+    setActiveTab("visualization");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedImage);
+
+      const response = await fetch("http://localhost:8000/predict", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Prediction failed");
+      }
+
+      const data = await response.json();
+
+      const newResult = {
+        ...data,
+        patientId: patientData.id || data.patientId || "PT-" + Math.floor(Math.random() * 10000),
+        patientName: patientData.name || "Unknown Patient",
+        timestamp: new Date().toISOString(),
+        preview: imagePreview, 
+        // Simulated Advanced Data Analysis Metrics
+        analysisMetrics: {
+             signalToNoise: (15 + Math.random() * 10).toFixed(1) + " dB",
+             densityScore: (0.4 + Math.random() * 0.4).toFixed(2),
+             confidenceInterval: "95% (±" + (1 + Math.random()).toFixed(1) + "%)",
+             textureAnalysis: ["Homogeneous", "Heterogeneous", "Ground-glass"][Math.floor(Math.random() * 3)]
+        }
+      };
+
+      setResults(newResult);
+      
+      // Add to history
+      setHistory(prev => [newResult, ...prev].slice(0, 50)); // Keep last 50
+
+    } catch (error) {
+      console.error(error);
+      alert("Error during AI analysis");
+    } finally {
+      setIsAnalyzing(false);
+      setProgress(100);
+    }
+  };
+
+  const loadFromHistory = (item) => {
+    setResults(item);
+    setImagePreview(item.preview);
+    // If saving base64 is too heavy, might need to rely on just result data
+    // assuming 'preview' IS the base64 string
+    setActiveTab("visualization");
+  };
+
+  const clearHistory = () => {
+    if(confirm("Are you sure you want to clear all history?")) {
+      setHistory([]);
+    }
+  };
+
+  const downloadReport = () => {
+    if (!results) return;
+
+    const reportContent = `
+PNEUMOTHORAX DIAGNOSTIC REPORT
+═══════════════════════════════════════════════════════════
+
+Generated by : PneumoAI Diagnostic Suite v2.0
+Date         : ${new Date(results.timestamp).toLocaleString()}
+
+═══════════════════════════════════════════════════════════
+PATIENT INFORMATION
+═══════════════════════════════════════════════════════════
+
+Patient ID   : ${patientData.id || "N/A"}
+Name         : ${patientData.name || "N/A"}
+Age          : ${patientData.age || "N/A"}
+Gender       : ${patientData.gender || "N/A"}
+
+${userData ? `Doctor      : ${userData.name} (${userData.specialty})` : ""}
+
+═══════════════════════════════════════════════════════════
+EXECUTIVE SUMMARY
+═══════════════════════════════════════════════════════════
+
+Status :
+${
+  results.hasPneumothorax ? "PNEUMOTHORAX DETECTED" : "NO PNEUMOTHORAX DETECTED"
+}
+
+Analysis Time : ${results.detectionTime}
+
+${
+  results.hasPneumothorax
+    ? `Affected Area : ${results.affectedArea}%
+Severity      : ${results.severity}
+Location      : ${results.location}`
+    : ""
+}
+
+═══════════════════════════════════════════════════════════
+CLINICAL FINDINGS
+═══════════════════════════════════════════════════════════
+
+${results.findings.map((f, i) => `${i + 1}. ${f}`).join("\n")}
+
+
+
+MEDICAL DISCLAIMER
+═══════════════════════════════════════════════════════════
+
+This AI-generated report is intended for clinical decision
+support only and should not replace professional judgment.
+
+• Radiologist review is required
+• Correlate findings with clinical symptoms
+• Additional imaging may be necessary if indicated
+
+═══════════════════════════════════════════════════════════
+
+Report ID: ${patientData.id || results.patientId}-${Date.now()}
+Generated by PneumoAI Deep Learning Analysis System
+`;
+
+    const blob = new Blob([reportContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `PneumoAI_Report_${patientData.id || "Patient"}_${
+      new Date().toISOString().split("T")[0]
+    }.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+
+  const handleAuthSubmit = (e) => {
+    e.preventDefault();
+
+    if (authMode === "login") {
+      // Simulate login
+      setUserData({
+        name: "Dr. " + authForm.name || "Medical Professional",
+        email: authForm.email,
+        specialty: authForm.specialty || "Radiology",
+        hospitalId: authForm.hospitalId || "N/A",
+      });
+      setIsLoggedIn(true);
+      setShowAuthModal(false);
+    } else {
+      // Simulate signup
+      setUserData({
+        name: "Dr. " + authForm.name,
+        email: authForm.email,
+        specialty: authForm.specialty,
+        hospitalId: authForm.hospitalId,
+      });
+      setIsLoggedIn(true);
+      setShowAuthModal(false);
+    }
+
+    // Reset form
+    setAuthForm({
+      email: "",
+      password: "",
+      name: "",
+      hospitalId: "",
+      specialty: "",
+    });
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setUserData(null);
+    setResults(null);
+    setImagePreview(null);
+    setSelectedImage(null);
+    setActiveTab("upload");
+  };
+
+  const MetricCard = ({ icon: Icon, label, value, color }) => (
+    <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-sm rounded-xl p-3 shadow-xl border border-slate-700/50 hover:scale-105 hover:border-cyan-500/50 transition-all duration-300">
+      <div className="flex items-center gap-2">
+        <div className={`p-2 rounded-lg ${color} shadow-lg`}>
+          <Icon className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">
+            {label}
+          </p>
+          <p className="text-lg font-extrabold text-white">{value}</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950">
+      {/* Enhanced Background Effects */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[100px] animate-pulse"></div>
+        <div
+          className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[100px] animate-pulse"
+          style={{ animationDelay: "1s" }}
+        ></div>
+        <div
+          className="absolute top-1/2 left-1/2 w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[100px] animate-pulse"
+          style={{ animationDelay: "2s" }}
+        ></div>
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-150 contrast-150 mix-blend-overlay"></div>
+      </div>
+
+      <Header
+        isLoggedIn={isLoggedIn}
+        userData={userData}
+        handleLogout={handleLogout}
+        setAuthMode={setAuthMode}
+        setShowAuthModal={setShowAuthModal}
+      />
+
+      {/* Main Content */}
+      <main className="relative max-w-[95%] mx-auto px-4 sm:px-6 py-6 font-normal transition-all duration-300">
+        {/* Auth Modal */}
+        {showAuthModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-800/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-700/50 max-w-md w-full p-8 relative">
+              <button
+                onClick={() => setShowAuthModal(false)}
+                className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+
+              <div className="text-center mb-8">
+                <div className="inline-flex p-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-2xl mb-4">
+                  <User className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-3xl font-black text-white mb-2">
+                  {authMode === "login" ? "Welcome Back" : "Create Account"}
+                </h2>
+                <p className="text-slate-400 text-sm">
+                  {authMode === "login"
+                    ? "Login to access AI diagnostics"
+                    : "Sign up to start using PneumoAI"}
+                </p>
+              </div>
+              <Form
+                authMode={authMode}
+                authForm={authForm}
+                setAuthForm={setAuthForm}
+                handleAuthSubmit={handleAuthSubmit}
+              />
+
+              <div className="mt-6 text-center">
+                <button
+                  onClick={() =>
+                    setAuthMode(authMode === "login" ? "signup" : "login")
+                  }
+                  className="text-sm text-slate-400 hover:text-cyan-400 transition-colors"
+                >
+                  {authMode === "login"
+                    ? "Don't have an account? Sign up"
+                    : "Already have an account? Login"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="flex flex-wrap gap-3 mb-8 bg-slate-800/40 backdrop-blur-xl p-2 rounded-2xl border border-slate-700/50 shadow-xl">
+          {[
+            { id: "upload", icon: Upload, label: "Upload" },
+            { id: "visualization", icon: Eye, label: "Visualization" },
+            { id: "report", icon: FileText, label: "Report" },
+            { id: "history", icon: Clock, label: "History" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() =>
+                (tab.id === "upload" || tab.id === "history" || results) && setActiveTab(tab.id)
+              }
+              disabled={(tab.id === "visualization" || tab.id === "report") && !results}
+              className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
+                activeTab === tab.id
+                  ? "bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 text-white shadow-xl shadow-cyan-500/30 scale-105"
+                  : "text-slate-400 hover:text-white hover:bg-slate-700/50 disabled:opacity-30 disabled:cursor-not-allowed"
+              }`}
+            >
+              <tab.icon className="w-5 h-5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Upload Tab */}
+        {activeTab === "upload" && (
+          <UploadTab
+            handleDragOver={handleDragOver}
+            handleDrop={handleDrop}
+            handleImageUpload={handleImageUpload}
+            fileInputRef={fileInputRef}
+            imagePreview={imagePreview}
+            setImagePreview={setImagePreview}
+            setSelectedImage={setSelectedImage}
+            setResults={setResults}
+            analyzeImage={analyzeImage}
+            isAnalyzing={isAnalyzing}
+            patientData={patientData}
+            setPatientData={setPatientData}
+          />
+        )}
+
+        {/* History Tab */}
+        {activeTab === "history" && (
+          <div className="space-y-6 animate-in fade-in zoom-in duration-300">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-black text-white">Recent Analyses</h2>
+               {history.length > 0 && (
+                <button
+                  onClick={clearHistory}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-xl transition-colors text-sm font-bold border border-red-500/20"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Clear History
+                </button>
+              )}
+            </div>
+            
+            {history.length === 0 ? (
+              <div className="text-center py-20 bg-slate-800/40 rounded-3xl border border-slate-700/50 border-dashed">
+                <Clock className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-slate-300">No History Yet</h3>
+                <p className="text-slate-500 mt-2">Previous analysis results will appear here</p>
+                <button 
+                  onClick={() => setActiveTab('upload')}
+                  className="mt-6 text-cyan-400 hover:text-cyan-300 font-bold"
+                >
+                  Start New Analysis
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {history.map((item, index) => (
+                  <div 
+                    key={index} 
+                    onClick={() => loadFromHistory(item)}
+                    className="group bg-slate-800/60 backdrop-blur-xl rounded-2xl border border-slate-700/50 hover:border-cyan-500/50 overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-cyan-900/20"
+                  >
+                    <div className="relative h-48 bg-slate-900">
+                      {item.preview ? (
+                        <img 
+                          src={item.preview} 
+                          alt="preview" 
+                          className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-600">
+                          <Image className="w-12 h-12" />
+                        </div>
+                      )}
+                      <div className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-bold shadow-lg ${
+                        item.hasPneumothorax 
+                          ? "bg-red-500 text-white" 
+                          : "bg-emerald-500 text-white"
+                      }`}>
+                        {item.hasPneumothorax ? "Detected" : "Clear"}
+                      </div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-90" />
+                      <div className="absolute bottom-3 left-3 right-3">
+                         <p className="text-xs text-cyan-400 font-bold mb-1 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(item.timestamp).toLocaleDateString()}
+                        </p>
+                        <p className="text-white font-bold truncate">
+                          {item.patientName || item.patientId}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="p-4">
+                       <div className="flex justify-between items-center mb-3">
+                        <span className="text-slate-400 text-xs font-medium">ID</span>
+                        <span className="text-white text-sm font-bold truncate max-w-[100px]">{item.patientId}</span>
+                       </div>
+                       <div className="flex justify-between items-center">
+                        <span className="text-slate-400 text-xs font-medium">Severity</span>
+                        <span className={`text-sm font-bold ${
+                          item.severity === 'High' ? 'text-red-400' : 
+                          item.severity === 'Medium' ? 'text-orange-400' : 'text-emerald-400'
+                        }`}>
+                          {item.severity || "N/A"}
+                        </span>
+                       </div>
+                       <div className="mt-4 pt-4 border-t border-slate-700/50 flex items-center justify-between text-cyan-400 group-hover:text-cyan-300">
+                          <span className="text-xs font-bold uppercase tracking-wider">View Result</span>
+                          <ChevronRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
+                       </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Processing State & Visualization Tab */}
+        {activeTab === "visualization" && (
+          <div className="animate-in fade-in zoom-in duration-300 pt-4">
+            {isAnalyzing ? (
+              <div className="flex flex-col items-center justify-center min-h-[600px] bg-slate-800/40 backdrop-blur-2xl rounded-[2rem] shadow-2xl border border-slate-700/50 relative overflow-hidden">
+                {/* Ambient Glow */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-gradient-to-br from-cyan-500/5 via-purple-500/5 to-blue-500/5 pointer-events-none"></div>
+                
+                <div className="relative w-32 h-32 mb-8">
+                  <div className="absolute inset-0 border-[8px] border-slate-700/50 rounded-full"></div>
+                  <div className="absolute inset-0 border-[8px] border-cyan-500 rounded-full border-t-transparent animate-spin"></div>
+                  <Brain className="absolute inset-0 m-auto w-12 h-12 text-cyan-400 animate-pulse" />
+                </div>
+                
+                <h3 className="text-3xl font-black text-white mb-3 tracking-tight relative z-10">
+                  Processing Image...
+                </h3>
+                <p className="text-slate-400 text-lg mb-8 relative z-10">
+                  AI is analyzing the chest X-ray for pneumothorax patterns
+                </p>
+                
+                <div className="w-full max-w-md relative z-10">
+                  <div className="flex justify-between text-sm font-bold mb-2">
+                    <span className="text-slate-400">Analysis Progress</span>
+                    <span className="text-cyan-400">{Math.round(progress)}%</span>
+                  </div>
+                  <div className="w-full bg-slate-700/50 rounded-full h-4 overflow-hidden shadow-inner border border-slate-600/30">
+                    <div
+                      className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 rounded-full transition-all duration-300 shadow-[0_0_15px_rgba(6,182,212,0.5)] relative overflow-hidden"
+                      style={{ width: `${progress}%` }}
+                    >
+                        <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : results ? (
+              <div className="grid lg:grid-cols-2 gap-8 items-stretch">
+                {/* Left Column: Visual Results */}
+                <div className="bg-slate-800/40 backdrop-blur-2xl rounded-[2rem] shadow-2xl p-8 border border-slate-700/50 flex flex-col h-full relative overflow-hidden">
+                   {/* Header */}
+                   <div className="flex items-center gap-4 mb-6 z-10">
+                    <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-600/50">
+                      <Eye className="w-6 h-6 text-cyan-400" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-white">Visual Analysis</h2>
+                   </div>
+
+                   {/* Visualization Container */}
+                   <div className="flex-1 flex flex-col items-center justify-center bg-slate-900/40 rounded-3xl border border-slate-700/50 p-4 relative group">
+                      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-500/10 via-transparent to-transparent opacity-50"></div>
+                      
+                      {visualizationMode === "comparison" ? (
+                        <div className="grid grid-cols-2 gap-4 w-full h-full">
+                          <div className="space-y-2 flex flex-col">
+                            <span className="text-xs font-bold text-slate-400 ml-1">Original X-Ray</span>
+                            <div className="relative flex-1 rounded-2xl overflow-hidden border border-slate-700/50 bg-black/20">
+                               <img src={imagePreview} alt="Original" className="w-full h-full object-contain" />
+                            </div>
+                          </div>
+                          <div className="space-y-2 flex flex-col">
+                            <span className="text-xs font-bold text-slate-400 ml-1">Segmentation Mask</span>
+                            <div className="relative flex-1 rounded-2xl overflow-hidden border border-red-500/30 bg-black/20">
+                               <img src={results.segmentationMap} alt="Mask" className="w-full h-full object-contain" />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="relative w-full h-full min-h-[400px] rounded-2xl overflow-hidden border border-slate-700/50 bg-black/20 group-hover:border-cyan-500/30 transition-colors">
+                           <img
+                            src={visualizationMode === "mask" ? results.segmentationMap : imagePreview}
+                            alt="Visualization"
+                            className="w-full h-full object-contain"
+                          />
+                          {visualizationMode === "overlay" && (
+                            <img
+                              src={results.maskOverlay}
+                              alt="Overlay"
+                              className="absolute inset-0 w-full h-full object-contain mix-blend-screen opacity-80"
+                            />
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* View Controls Overlay */}
+                      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/80 backdrop-blur-md p-1.5 rounded-2xl border border-slate-700 shadow-xl z-20">
+                          {["original", "mask", "overlay", "comparison"].map((mode) => (
+                            <button
+                              key={mode}
+                              onClick={() => setVisualizationMode(mode)}
+                              className={`px-4 py-2 rounded-xl font-bold text-xs capitalize transition-all ${
+                                visualizationMode === mode
+                                  ? "bg-cyan-500 text-white shadow-lg shadow-cyan-500/25"
+                                  : "text-slate-400 hover:text-white hover:bg-white/10"
+                              }`}
+                            >
+                              {mode}
+                            </button>
+                          ))}
+                      </div>
+                   </div>
+                </div>
+
+                {/* Right Column: Metrics & Findings */}
+                <div className="flex flex-col gap-6">
+                  {/* Status Card */}
+                  <div className={`p-6 rounded-[2rem] border relative overflow-hidden shadow-2xl ${
+                      results.hasPneumothorax
+                      ? "bg-gradient-to-br from-red-950/80 to-slate-900 border-red-500/50"
+                      : "bg-gradient-to-br from-emerald-950/80 to-slate-900 border-emerald-500/50"
+                  }`}>
+                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/2"></div>
+                     
+                     <div className="flex items-start justify-between relative z-10">
+                        <div>
+                          <p className="text-sm font-bold text-slate-400 mb-1 uppercase tracking-wider">Detection Status</p>
+                          <h2 className={`text-3xl sm:text-4xl font-black mb-2 ${
+                             results.hasPneumothorax ? "text-red-400" : "text-emerald-400"
+                          }`}>
+                            {results.hasPneumothorax ? "Pneumothorax Detected" : "Normal"}
+                          </h2>
+                          <div className="flex gap-4 text-sm font-bold text-slate-300">
+                             <div className="flex items-center gap-2 px-3 py-1 bg-black/30 rounded-lg">
+                                <Brain className="w-4 h-4 text-cyan-400" />
+                                Conf: {results.confidence}%
+                             </div>
+                             <div className="flex items-center gap-2 px-3 py-1 bg-black/30 rounded-lg">
+                                <Clock className="w-4 h-4 text-blue-400" />
+                                {results.detectionTime}
+                             </div>
+                          </div>
+                        </div>
+                        <div className={`p-4 rounded-full shadow-lg border-4 border-black/20 ${
+                           results.hasPneumothorax ? "bg-red-500" : "bg-emerald-500"
+                        }`}>
+                           {results.hasPneumothorax ? <AlertCircle className="w-8 h-8 text-white" /> : <CheckCircle2 className="w-8 h-8 text-white" />}
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Detailed Metrics Grid */}
+                  <div className="grid grid-cols-2 gap-4">
+                      <MetricCard
+                        icon={Target}
+                        label="Affected Area"
+                        value={`${results.affectedArea}%`}
+                        color="bg-gradient-to-br from-orange-500 to-red-600"
+                      />
+                      <MetricCard
+                        icon={TrendingUp}
+                        label="Severity"
+                        value={results.severity}
+                        color="bg-gradient-to-br from-purple-500 to-pink-600"
+                      />
+                      <MetricCard
+                        icon={MapPin}
+                        label="Location"
+                        value={results.location}
+                        color="bg-gradient-to-br from-blue-500 to-cyan-600"
+                      />
+                      <MetricCard
+                        icon={Layers}
+                        label="Dice Score"
+                        value={results.metrics?.dice?.toFixed(3) || "N/A"}
+                        color="bg-gradient-to-br from-green-500 to-emerald-600"
+                      />
+                  </div>
+                  
+                  {/* Actions */}
+                  <div className="grid grid-cols-2 gap-4 mt-auto">
+                     <button 
+                        onClick={() => setActiveTab('report')}
+                        className="flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-slate-700 hover:border-cyan-500/50 bg-slate-800/50 hover:bg-slate-800 text-white font-bold transition-all group"
+                     >
+                        <FileText className="w-5 h-5 text-slate-400 group-hover:text-cyan-400 transition-colors" />
+                        View Full Report
+                     </button>
+                     <button 
+                        onClick={() => {
+                          setSelectedImage(null);
+                          setResults(null);
+                          setImagePreview(null);
+                          setActiveTab('upload');
+                        }}
+                        className="flex items-center justify-center gap-2 p-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white font-bold shadow-lg shadow-cyan-500/20 transition-all"
+                     >
+                        <Upload className="w-5 h-5" />
+                        New Analysis
+                     </button>
+                  </div>
+
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {activeTab === "report" && results && (
+          <Report
+            results={results}
+            patientData={patientData}
+            reportRef={reportRef}
+            downloadReport={downloadReport}
+          />
+        )}
+      </main>
+      
+      {/* Footer */}
+      <Footer />
+    </div>
+  );
+}
